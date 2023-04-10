@@ -1,0 +1,57 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+import pandas as pd
+import sys
+if len(sys.argv) < 4:
+    sys.exit("Error: Three arguments are required: vcf_file_name gene_list_file_name output_file_name")
+
+vcf_file_name = sys.argv[1]
+gene_list_file_name = sys.argv[2]
+output_file_name = sys.argv[3]
+
+colnames=['ID', 'GeneName'] 
+df_gene_list = pd.read_csv(gene_list_file_name, sep='\t', names=colnames, header=None)
+
+def find_indices(lst, condition):
+  return [i for i, elem in enumerate(lst) if condition(elem)]
+
+result = {}
+
+TAG = '#CHROM'
+
+vcf_header_line = ''
+tag_found = False
+with open(vcf_file_name) as in_file:
+    for line in in_file:
+        if not tag_found:
+            if line.strip().find(TAG) >= 0:
+                tag_found = True
+                vcf_header_line = line
+                vcf_header_list = vcf_header_line.split()
+                if vcf_header_line.find('#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT') == -1:
+                    sys.exit("Error: Malformed VCF header")
+                else:
+                    print('Processing vcf_file...')                   
+
+                sample_ID_list = vcf_header_list[9:]
+        else:
+            genotype_line_values_list = line.strip().split()
+            genotype_list = genotype_line_values_list[9:]
+            ID = genotype_line_values_list[2]
+            gene_name = df_gene_list[df_gene_list.ID == ID].iloc[0]["GeneName"]
+            found_indices_of_sample_IDs = find_indices(genotype_list, lambda e: (e != "0/0" and e != "./." and e != "." and e != "0|0" and e != ".|."))
+            for i in found_indices_of_sample_IDs:
+                sample_id = sample_ID_list[i]
+                if sample_id in result:
+                    result[sample_id].add(gene_name)
+                else:
+                    result[sample_id]={gene_name}
+
+print('Writing output...')
+f = open(output_file_name, "w")
+f.write('ID'+'\t'+'GeneList'+'\n')
+for key in result:
+    f.write(key+'\t'+str(sorted(result[key])).strip('[').strip(']').replace("'","").replace(" ","")+'\n')
+f.close()
+print('Done!')
